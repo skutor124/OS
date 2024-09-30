@@ -3,15 +3,15 @@
 #include <linux/timekeeping.h>// Для работы со временем
 #include <linux/seq_file.h>// Для создания последовательных файлов для упрощения вывода данных в /proc
 
-static struct proc_dir_entry *lab4_file;  // Указатель на структуру, представляющую файл в /proc
+static struct proc_dir_entry *tsulab_file;  // Указатель на структуру, представляющую файл в /proc
 static int read_count = 0;// счётчик чтений для определения чётности чтения файла
 
 /**
- * lab4_show - оснвная функция, вызываемая при чтении файла в /proc.
+ * tsulab_show - оснвная функция, вызываемая при чтении файла в /proc.
  * Она выводит либо количество минут с полудня, либо до полудня в зависимости от того,
  * сколько раз был прочитан файл.
  */
-static int lab4_show(struct seq_file *m, void *v)
+static int tsulab_show(struct seq_file *m, void *v)
 {
     struct timespec64 now;
     ktime_get_real_ts64(&now);  // Получаем текущее время
@@ -53,54 +53,54 @@ static int lab4_show(struct seq_file *m, void *v)
 }
 
 /**
- * lab4_open - функция, вызываемая при открытии файла в /proc.
+ * tsulab_open - функция, вызываемая при открытии файла в /proc.
  * Использует seq_file для отображения данных.
  * Функция single_open подготавливает файл к чтению и обрабатывает его как последовательный файл с одноразовым выводом
  */
-static int lab4_open(struct inode *inode, struct file *file)
+static int tsulab_open(struct inode *inode, struct file *file)
 {
-    return single_open(file, lab4_show, NULL);
+    return single_open(file, tsulab_show, NULL);
 }
 
 /** 
 * Структура proc_ops, используемая для указания функций, которые ядро вызовет при взаимодействии с конкретным файлом в /proc.
 * Каждый элемент структуры указывает на соответствующую функцию, обрабатывающую определенную операцию
 */
-static const struct proc_ops lab4_fops = {
-    .proc_open = lab4_open,    // Открытие файла
+static const struct proc_ops tsulab_fops = {
+    .proc_open = tsulab_open,    // Открытие файла
     .proc_read = seq_read,       // Чтение файла
     .proc_lseek = seq_lseek,     // Управление положением чтения в файле
     .proc_release = single_release,  // Закрытие файла
 };
 
 /**
- * lab4_init - функция инициализации модуля.
+ * tsulab_init - функция инициализации модуля.
  * Создаёт файл в /proc при загрузке модуля.
  * Выводит сообщение в dmesg о создании файла.
  */
-static int __init lab4_init(void)
+static int __init tsulab_init(void)
 {
-    lab4_file = proc_create("lab4", 0, NULL, &lab4_fops);  // Создание файла в /proc
-    if (!lab4_file) {
+    tsulab_file = proc_create("tsulab", 0, NULL, &tsulab_fops);  // Создание файла в /proc
+    if (!tsulab_file) {
         return -ENOMEM;  // Возвращаем ошибку, если файл не был создан
     }
-    pr_info("proc/lab4 created\n");  // Выводим сообщение в dmesg
+    pr_info("proc/tsulab created\n");  // Выводим сообщение в dmesg
     return 0;
 }
 
 /**
- * lab4_exit - функция очистки модуля.
+ * tsulab_exit - функция очистки модуля.
  * Удаляет файл из /proc при выгрузке модуля.
  * Выводит сообщение в dmesg о удалении файла.
  */
-static void __exit lab4_exit(void)
+static void __exit tsulab_exit(void)
 {
-    proc_remove(lab4_file);  // Удаление файла из /proc
-    pr_info("/proc/lab4 removed\n");  // Выводим сообщение в dmesg
+    proc_remove(tsulab_file);  // Удаление файла из /proc
+    pr_info("/proc/tsulab removed\n");  // Выводим сообщение в dmesg
 }
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("A proc file showing time since/until noon");
 
-module_init(lab4_init);
-module_exit(lab4_exit);
+module_init(tsulab_init);
+module_exit(tsulab_exit);
