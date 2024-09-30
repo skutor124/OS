@@ -1,64 +1,106 @@
-#include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/proc_fs.h>
-#include <linux/time.h>
+#include <linux/module.h> // Нужен для работы с модулями ядра
+#include <linux/proc_fs.h>// Для работы с /proc
+#include <linux/timekeeping.h>// Для работы со временем
+#include <linux/seq_file.h>// Для создания последовательных файлов для упрощения вывода данных в /proc
 
-#define PROC_NAME "tsulab"
+static struct proc_dir_entry *lab4_file;  // Указатель на структуру, представляющую файл в /proc
+static int read_count = 0;// счётчик чтений для определения чётности чтения файла
 
-static int read_count = 0;
-
-static int minutes_since_noon(void) {
+/**
+ * lab4_show - оснвная функция, вызываемая при чтении файла в /proc.
+ * Она выводит либо количество минут с полудня, либо до полудня в зависимости от того,
+ * сколько раз был прочитан файл.
+ */
+static int lab4_show(struct seq_file *m, void *v)
+{
     struct timespec64 now;
-    ktime_get_real_ts64(&now);
-    time64_t current_time = now.tv_sec;
-    time64_t noon = current_time - (current_time % 86400) + 18000;
-    return (current_time - noon) / 60;
-}
+    ktime_get_real_ts64(&now);  // Получаем текущее время
 
-static int minutes_until_noon(void) {
-    struct timespec64 now;
-    ktime_get_real_ts64(&now);
-    time64_t current_time = now.tv_sec;
-    time64_t noon = current_time - (current_time % 86400) + 18000 + 86400;
-    return (noon - current_time) / 60;
-}
+    // Преобразуем текущее время в количество минут с полуночи UTC
+    int current_minutes_utc = (now.tv_sec / 60) % 1440;
 
-static ssize_t proc_read(struct file *file, char *buf, size_t count, loff_t *pos) {
-    int len;
-    char message[64];
+    int timezone = 7; // Часовой пояс UTC+7 для Томска/Новосибирска/Красноярска
+    //int timezone = 3; // Часовой пояс UTC+3 для Москвы
 
-    if (*pos > 0) {
-        // Inform the kernel that there is no more data to be read
-        return 0;
+    
+    // Корректируем текущее время с учетом часового пояса
+    int current_minutes = current_minutes_utc + (timezone * 60);
+    
+    // Приводим минуты к 24-часовому формату
+    current_minutes = current_minutes % 1440;
+
+    // Минуты с предыдущего полудня
+    int minutes_since_noon = current_minutes - 720;
+    
+    // Если время отрицательное, то корректируем его (для случая, когда время в промежутке [0:00;11:59])
+    if (minutes_since_noon < 0) {
+        minutes_since_noon += 1440; 
     }
 
+    // Минуты до следующего полудня
+    int minutes_until_noon = 1440 - minutes_since_noon;
+
+    read_count++;  // Увеличиваем счётчик чтений
+
+    // В зависимости от чётности выводим время с предыдущего полудня / до следующего полудня 
     if (read_count % 2 == 0) {
-        len = snprintf(message, sizeof(message), "Minutes since previous noon: %d\n", minutes_since_noon());
+        seq_printf(m, "Minutes since previous noon: %d\n", minutes_since_noon);
     } else {
-        len = snprintf(message, sizeof(message), "Minutes until next noon: %d\n", minutes_until_noon());
+        seq_printf(m, "Minutes until next noon: %d\n", minutes_until_noon);
     }
-  
-    *pos += len;
-    read_count++;
-    return len;
-}
 
-static const struct proc_ops proc_ops = {
-    .proc_read = proc_read,
-};
-
-static int proc_init(void) {
-    proc_create(PROC_NAME, 0666, NULL, &proc_ops);
-    printk(KERN_INFO "/proc/%s created\n", PROC_NAME);
     return 0;
 }
 
-static void proc_exit(void) {
-    remove_proc_entry(PROC_NAME, NULL);
-    printk(KERN_INFO "/proc/%s removed\n", PROC_NAME);
+/**
+ * lab4_open - функция, вызываемая при открытии файла в /proc.
+ * Использует seq_file для отображения данных.
+ * Функция single_open подготавливает файл к чтению и обрабатывает его как последовательный файл с одноразовым выводом
+ */
+static int lab4_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, lab4_show, NULL);
+}
+
+/** 
+* Структура proc_ops, используемая для указания функций, которые ядро вызовет при взаимодействии с конкретным файлом в /proc.
+* Каждый элемент структуры указывает на соответствующую функцию, обрабатывающую определенную операцию
+*/
+static const struct proc_ops lab4_fops = {
+    .proc_open = lab4_open,    // Открытие файла
+    .proc_read = seq_read,       // Чтение файла
+    .proc_lseek = seq_lseek,     // Управление положением чтения в файле
+    .proc_release = single_release,  // Закрытие файла
+};
+
+/**
+ * lab4_init - функция инициализации модуля.
+ * Создаёт файл в /proc при загрузке модуля.
+ * Выводит сообщение в dmesg о создании файла.
+ */
+static int __init lab4_init(void)
+{
+    lab4_file = proc_create("lab4", 0, NULL, &lab4_fops);  // Создание файла в /proc
+    if (!lab4_file) {
+        return -ENOMEM;  // Возвращаем ошибку, если файл не был создан
+    }
+    pr_info("proc/lab4 created\n");  // Выводим сообщение в dmesg
+    return 0;
+}
+
+/**
+ * lab4_exit - функция очистки модуля.
+ * Удаляет файл из /proc при выгрузке модуля.
+ * Выводит сообщение в dmesg о удалении файла.
+ */
+static void __exit lab4_exit(void)
+{
+    proc_remove(lab4_file);  // Удаление файла из /proc
+    pr_info("/proc/lab4 removed\n");  // Выводим сообщение в dmesg
 }
 
 MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("A proc file showing time since/until noon");
 
-module_init(proc_init);
-module_exit(proc_exit);
+module_init(lab4_init);
+module_exit(lab4_exit);
