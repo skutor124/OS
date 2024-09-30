@@ -84,7 +84,7 @@ static int __init tsulab_init(void)
     if (!tsulab_file) {
         return -ENOMEM;  // Возвращаем ошибку, если файл не был создан
     }
-    pr_info("proc/tsulab created\n");  // Выводим сообщение в dmesg
+    pr_info("/proc/tsulab created\n");  // Выводим сообщение в dmesg
     return 0;
 }
 
